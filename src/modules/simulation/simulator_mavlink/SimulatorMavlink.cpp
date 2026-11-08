@@ -219,9 +219,14 @@ void SimulatorMavlink::update_sensors(const hrt_abstime &time, const mavlink_hil
 				_last_accel_fifo.samples = 1;
 				_last_accel_fifo.dt = time - _last_accel_fifo.timestamp_sample;
 				_last_accel_fifo.timestamp_sample = time;
-				_last_accel_fifo.x[0] = sensors.xacc / ACCEL_FIFO_SCALE;
-				_last_accel_fifo.y[0] = sensors.yacc / ACCEL_FIFO_SCALE;
-				_last_accel_fifo.z[0] = sensors.zacc / ACCEL_FIFO_SCALE;
+				// Saturate like a real ±16 g FIFO instead of wrapping the int16 sample
+				const auto fifo_sample = [](float accel) {
+					return static_cast<int16_t>(math::constrain(roundf(accel / ACCEL_FIFO_SCALE), -32768.f, 32767.f));
+				};
+				_last_accel_fifo.x[0] = fifo_sample(sensors.xacc);
+				_last_accel_fifo.y[0] = fifo_sample(sensors.yacc);
+				_last_accel_fifo.z[0] = fifo_sample(sensors.zacc);
+
 
 				_px4_accel[sensors.id].updateFIFO(_last_accel_fifo);
 			}

@@ -34,6 +34,8 @@
 #ifndef SYSTEM_TIME_HPP
 #define SYSTEM_TIME_HPP
 
+#include <lib/timesync/Timesync.hpp>
+
 class MavlinkStreamSystemTime : public MavlinkStream
 {
 public:
@@ -55,12 +57,30 @@ private:
 
 	bool send() override
 	{
-		timespec tv;
-		px4_clock_gettime(CLOCK_REALTIME, &tv);
+		const hrt_abstime now = hrt_absolute_time();
 
 		mavlink_system_time_t msg{};
-		msg.time_boot_ms = hrt_absolute_time() / 1000;
-		msg.time_unix_usec = (uint64_t)tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
+		msg.time_boot_ms = now / 1000;
+
+		// [I-P1, local patch] Send the uXRCE-DDS agent's clock (the companion computer's CLOCK_REALTIME)
+		// once the DDS timesync has converged, using the same offset the DDS client applies to every
+		// /fmu/out timestamp (companion_time = hrt - offset). A device disciplined from SYSTEM_TIME (the
+		// LiDAR PPS/GPRMC synchroniser on GPS2) then lands in the same time domain as the PX4 IMU over DDS
+		// and ROS. Stock PX4 sends CLOCK_REALTIME, which UXRCE_DDS_SYNCC sets only when > 5 s off.
+		// After a DDS session drop or filter reset the last converged offset is held (it is only replaced
+		// by a new converged estimate), so the source does not fall back and forth. CLOCK_REALTIME is not
+		// touched here. Before the first DDS convergence after boot, the stock behaviour is kept.
+		int64_t dds_offset_us = 0;
+		hrt_abstime dds_last_update = 0;
+
+		if (Timesync::dds_converged_offset(dds_offset_us, dds_last_update)) {
+			msg.time_unix_usec = (uint64_t)((int64_t)now - dds_offset_us);
+
+		} else {
+			timespec tv;
+			px4_clock_gettime(CLOCK_REALTIME, &tv);
+			msg.time_unix_usec = (uint64_t)tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
+		}
 
 		// If the time is before 2001-01-01, it's probably the default 2000
 		// and we don't need to bother sending it because it's definitely wrong.

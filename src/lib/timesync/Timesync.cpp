@@ -42,6 +42,10 @@
 
 #include <stdlib.h>
 
+// [I-P1] see Timesync::dds_converged_offset()
+px4::atomic<int64_t> Timesync::_dds_offset_us{0};
+px4::atomic<uint64_t> Timesync::_dds_offset_last_update{0};
+
 void Timesync::update(const uint64_t now_us, const int64_t remote_timestamp_ns, const int64_t originate_timestamp_ns)
 {
 	// Message originating from this system, compute time offset from it
@@ -97,6 +101,13 @@ void Timesync::update(const uint64_t now_us, const int64_t remote_timestamp_ns, 
 
 				// Reset high RTT count after filter update
 				_high_rtt_count = 0;
+
+				// [I-P1] publish the converged DDS offset for MAVLink SYSTEM_TIME (written by the DDS
+				// instance only; offset first, then the timestamp that marks it valid)
+				if ((_source == timesync_status_s::SOURCE_PROTOCOL_DDS) && sync_converged()) {
+					_dds_offset_us.store((int64_t)_time_offset);
+					_dds_offset_last_update.store(now_us);
+				}
 			}
 
 		} else {

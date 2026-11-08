@@ -212,6 +212,9 @@ if [ -n "$PX4_SIM_SPEED_FACTOR" ]; then
 	param set COM_OBC_LOSS_T $COM_OBC_LOSS_T_LONGER
 fi
 
+param set-default UXRCE_DDS_SYNCT 0
+param set-default UXRCE_DDS_DOM_ID 5
+
 # Autostart ID
 autostart_file=''
 # shellcheck disable=SC2231

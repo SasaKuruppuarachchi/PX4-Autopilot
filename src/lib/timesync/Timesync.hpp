@@ -41,6 +41,7 @@
 #pragma once
 
 #include <drivers/drv_hrt.h>
+#include <px4_platform_common/atomic.h>
 
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/timesync_status.h>
@@ -117,6 +118,29 @@ public:
 	 */
 	void reset_filter();
 
+	/**
+	 * [I-P1, local patch] Last converged uXRCE-DDS clock offset, for the MAVLink SYSTEM_TIME stream.
+	 *
+	 * The uXRCE-DDS client stamps every /fmu/out message as hrt - offset, i.e. in the agent's
+	 * (companion computer's) clock. This exposes the same offset so that SYSTEM_TIME.time_unix_usec
+	 * can be sent in that clock domain too, instead of PX4's coarse CLOCK_REALTIME.
+	 *
+	 * The value is written only by the Timesync instance whose source is SOURCE_PROTOCOL_DDS, and only
+	 * from samples accepted while the filter is converged. It is intentionally NOT cleared by
+	 * reset_filter() (session drop, agent restart, companion clock step): readers keep using the last
+	 * converged offset on PX4's hrt (holdover, no step) until the re-converged filter replaces it.
+	 *
+	 * @param offset_us   [out] offset such that companion_time_us = hrt_us - offset_us
+	 * @param last_update [out] hrt time of the last converged DDS sample (for staleness reporting)
+	 * @return false if the DDS timesync has not converged once since boot
+	 */
+	static bool dds_converged_offset(int64_t &offset_us, hrt_abstime &last_update)
+	{
+		last_update = _dds_offset_last_update.load();
+		offset_us = _dds_offset_us.load();
+		return last_update != 0;
+	}
+
 
 private:
 
@@ -141,4 +165,9 @@ private:
 	uint32_t _high_rtt_count{0};
 
 	uint8_t _source{};
+
+	// [I-P1] shared between the uxrce_dds_client and mavlink tasks; 64-bit px4::atomic uses an
+	// IRQ-safe critical section on Cortex-M7 (not lock-free) and native atomics on POSIX.
+	static px4::atomic<int64_t> _dds_offset_us;
+	static px4::atomic<uint64_t> _dds_offset_last_update; // 0 = never converged
 };

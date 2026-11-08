@@ -45,10 +45,17 @@ publications:
 
   - topic: /fmu/out/sensor_combined
     type: px4_msgs::msg::SensorCombined
+    rate_limit: 400.  # agipix high-rate IMU: 2 ms gate (1e3/400 truncated), sensor_combined is published at IMU_INTEG_RATE (200 Hz)
 
   - topic: /fmu/out/timesync_status
     type: px4_msgs::msg::TimesyncStatus
     rate_limit: 10.
+
+  # agipix I-P2b: PPS edges captured on a PWM pin (PWM_AUX_FUNC5=2064, PPS_CAP_ENABLE=1). Only `timestamp`
+  # (hrt at the edge interrupt) is translated to the agent clock by the DDS client; `rtc_timestamp` assumes a
+  # GNSS receiver on sensor_gps and is meaningless without one.
+  - topic: /fmu/out/pps_capture
+    type: px4_msgs::msg::PpsCapture
 
   - topic: /fmu/out/transponder_report
     type: px4_msgs::msg::TransponderReport
